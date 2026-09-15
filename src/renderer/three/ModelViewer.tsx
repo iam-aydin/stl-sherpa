@@ -365,7 +365,22 @@ export const ModelViewer = forwardRef<ModelViewerHandle, Props>(function ModelVi
         const buffer = await res.arrayBuffer();
         if (canceled) return;
 
-        const obj = await loadModel(buffer, file.ext, '', file.orientation);
+        // glTF (.gltf, not .glb) can reference sibling resources — a
+        // scene.bin buffer, external textures — by relative URL. The
+        // renderer has no direct filesystem access, so we resolve those
+        // through the wh3d-file://<libraryId>/rel/<relPath> route instead
+        // of a plain OS path (which only works in the thumb-worker's
+        // nodeIntegration context).
+        const obj = await loadModel(
+          buffer,
+          file.ext,
+          (relativeUrl) => {
+            const decoded = decodeURIComponent(relativeUrl);
+            const relPath = file.parentDir ? `${file.parentDir}/${decoded}` : decoded;
+            return `wh3d-file://${file.libraryId}/rel/${encodeURIComponent(relPath)}`;
+          },
+          file.orientation
+        );
         if (canceled) {
           disposeObject(obj);
           return;

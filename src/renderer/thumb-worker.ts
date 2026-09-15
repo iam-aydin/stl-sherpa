@@ -16,14 +16,37 @@ import { scopedLogger } from './logger';
 
 const log = scopedLogger('thumb-worker');
 
+
 // Use window.require() rather than ES `import` for the two Node-only modules
 // because Vite's dev server can't transform them (the `electron` package's
 // default export is a path string and `fs` isn't a browser module). The
 // hidden worker BrowserWindow runs with nodeIntegration:true so
 // window.require is available in both dev and prod.
 const nodeRequire = (window as unknown as { require: NodeRequire }).require;
+const fsSync = nodeRequire('fs') as typeof import('fs');
+const nodePath = nodeRequire('path') as typeof import('path');
 const { ipcRenderer } = nodeRequire('electron') as { ipcRenderer: IpcRenderer };
 const fs = (nodeRequire('fs') as { promises: typeof FsPromises }).promises;
+
+/** Resolves a glTF's relative resource URLs (scene.bin, textures/*.png) by
+ *  reading them straight off disk — this window has direct fs access — and
+ *  handing GLTFLoader a data: URI instead of relying on fetch()/file:// URL
+ *  semantics, which are unreliable across Electron contexts. */
+function resolveGltfResource(gltfAbsPath: string): (relativeUrl: string) => string {
+  const dir = nodePath.dirname(gltfAbsPath);
+  return (relativeUrl: string): string => {
+    if (/^(data:|blob:|https?:)/i.test(relativeUrl)) return relativeUrl;
+    const abs = nodePath.join(dir, decodeURIComponent(relativeUrl));
+    const bytes = fsSync.readFileSync(abs);
+    const ext = nodePath.extname(abs).toLowerCase();
+    const mime =
+      ext === '.png' ? 'image/png' :
+      ext === '.jpg' || ext === '.jpeg' ? 'image/jpeg' :
+      ext === '.webp' ? 'image/webp' :
+      'application/octet-stream'; // covers .bin
+    return `data:${mime};base64,${bytes.toString('base64')}`;
+  };
+}
 
 let renderer: THREE.WebGLRenderer | null = null;
 let jobsRendered = 0;
@@ -66,8 +89,7 @@ async function renderToPng(req: ThumbRenderRequest): Promise<RenderOutput> {
     }
   }
 
-  const obj = await loadModel(arrayBuffer, req.ext, req.absPath, req.orientation);
-
+  const obj = await loadModel(arrayBuffer, req.ext, resolveGltfResource(req.absPath), req.orientation);
   const r = getRenderer();
   const scene = new THREE.Scene();
   const lighting = new LightingRig(scene, r);

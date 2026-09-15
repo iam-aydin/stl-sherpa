@@ -23,6 +23,18 @@ export class ThreeMFEmbeddedOnlyError extends Error {
 }
 
 /**
+ * How glTF's external resources (scene.bin, textures/*.png) get resolved:
+ *  - string: a plain base path, handed straight to GLTFLoader.parse() as its
+ *    resourcePath. Used by the thumb-worker, which runs in a
+ *    nodeIntegration:true window with direct filesystem access.
+ *  - function: called with each relative resource URL the glTF references;
+ *    must return a fully-qualified, fetchable URL. Used by the sandboxed
+ *    renderer, which has no direct fs access and instead resolves resources
+ *    through the wh3d-file://<libraryId>/rel/<path> protocol.
+ */
+export type ResourceContext = string | ((relativeUrl: string) => string);
+
+/**
  * Pure loaders: take the file's bytes, return a renderable Object3D. No
  * filesystem or fetch IO — callers (thumb worker / in-UI viewer) are
  * responsible for delivering bytes through whatever transport works in
@@ -35,14 +47,14 @@ export class ThreeMFEmbeddedOnlyError extends Error {
 export async function loadModel(
   buffer: ArrayBuffer,
   ext: string,
-  resourcePath = '',
+  resourceContext: ResourceContext = '',
   orientation?: FileOrientation
 ): Promise<THREE.Object3D> {
   let obj: THREE.Object3D;
   switch (ext) {
     case 'glb':
     case 'gltf':
-      obj = await loadGLTF(buffer, resourcePath);
+      obj = await loadGLTF(buffer, resourceContext);
       break;
     case 'obj':
       obj = loadOBJ(buffer);
@@ -63,12 +75,29 @@ export async function loadModel(
   return obj;
 }
 
-function loadGLTF(buffer: ArrayBuffer, resourcePath: string): Promise<THREE.Object3D> {
+function loadGLTF(buffer: ArrayBuffer, resourceContext: ResourceContext): Promise<THREE.Object3D> {
   return new Promise((resolve, reject) => {
     const loader = new GLTFLoader();
+
+    if (typeof resourceContext === 'function') {
+      // Leave embedded data URIs / already-qualified URLs alone; only
+      // rewrite bare relative filenames (scene.bin, textures/diffuse.png).
+      loader.manager.setURLModifier((url) => {
+        if (/^(data:|blob:|https?:|wh3d-)/i.test(url)) return url;
+        return resourceContext(url);
+      });
+      loader.parse(
+        buffer,
+        '',
+        (gltf) => resolve(gltf.scene),
+        (err) => reject(err instanceof Error ? err : new Error(String(err)))
+      );
+      return;
+    }
+
     loader.parse(
       buffer,
-      resourcePath,
+      resourceContext,
       (gltf) => resolve(gltf.scene),
       (err) => reject(err instanceof Error ? err : new Error(String(err)))
     );

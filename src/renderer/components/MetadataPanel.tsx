@@ -24,6 +24,7 @@ import { RatingWidget } from './RatingWidget';
 import { ColorLabelWidget } from './ColorLabelWidget';
 import { formatBytes, formatDateTime, formatRelativeTime } from '../util/format';
 import { usePreferences } from '../util/use-preferences';
+import { useSidecarLicense } from '../util/use-sidecar-license';
 import { ipc } from '../ipc-client';
 
 interface Props {
@@ -157,6 +158,8 @@ function SingleFilePanel({
     }
   }, [file.metadataJson]);
 
+  const sidecarLicense = useSidecarLicense(libraryId, file.parentDir);
+
   return (
     <Stack gap="sm" p="md" style={{ height: '100%', overflow: 'auto' }}>
       <Group justify="space-between" align="center">
@@ -201,6 +204,13 @@ function SingleFilePanel({
         <>
           <Divider />
           <ModelStats metadata={metadata} />
+        </>
+      )}
+
+      {!sidecarLicense.loading && sidecarLicense.text && (
+        <>
+          <Divider />
+          <SidecarLicense text={sidecarLicense.text} />
         </>
       )}
 
@@ -492,6 +502,24 @@ function SourceMetadata({ format }: { format: FormatMetadata }) {
           <Field key={label} label={label} value={value} />
         ))}
       </Stack>
+    </div>
+  );
+}
+
+function SidecarLicense({ text }: { text: string }) {
+  return (
+    <div>
+      <Text size="xs" c="dimmed" tt="uppercase" fw={600} mb={4}>
+        License
+      </Text>
+      <Textarea
+        value={text}
+        readOnly
+        autosize
+        minRows={2}
+        maxRows={10}
+        styles={{ input: { fontFamily: 'monospace', fontSize: 11 } }}
+      />
     </div>
   );
 }

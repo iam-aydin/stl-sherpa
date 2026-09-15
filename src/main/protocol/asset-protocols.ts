@@ -1,3 +1,4 @@
+import path from 'node:path';
 import { app, net, protocol } from 'electron';
 import { existsSync, statSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
@@ -38,6 +39,11 @@ interface ParsedAssetURL {
   fileId: number;
 }
 
+interface ParsedRelURL {
+  libraryId: string;
+  relPath: string;
+}
+
 /**
  * URL shape: wh3d-thumb://<libraryId>/<fileId>
  *            wh3d-file://<libraryId>/<fileId>
@@ -57,6 +63,27 @@ function parse(url: string): ParsedAssetURL | null {
   const fileId = Number.parseInt(seg, 10);
   if (!Number.isFinite(fileId) || fileId <= 0) return null;
   return { libraryId, fileId };
+}
+
+/**
+ * URL shape: wh3d-file://<libraryId>/rel/<url-encoded relPath>
+ * Used for glTF sibling resources (.bin, textures, etc.) that aren't
+ * individually tracked FileRecords in the DB — we just need to read a byte
+ * range off disk relative to the library root.
+ */
+function parseRel(url: string): ParsedRelURL | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return null;
+  }
+  const libraryId = parsed.hostname;
+  if (!libraryId) return null;
+  const rawPath = parsed.pathname.replace(/^\/+/, '');
+  const [head, ...rest] = rawPath.split('/');
+  if (head !== 'rel' || rest.length === 0) return null;
+  return { libraryId, relPath: decodeURIComponent(rest.join('/')) };
 }
 
 function notFound(message: string): Response {
@@ -82,6 +109,33 @@ export function registerAssetProtocols(): void {
   });
 
   protocol.handle(SCHEME_FILE, async (req) => {
+    // glTF sibling resources (scene.bin, textures/*.png) resolve by relative
+    // path, not by DB file id — they're not tracked FileRecords.
+    const rel = parseRel(req.url);
+    if (rel) {
+      const lib = getOpenLibrary(rel.libraryId);
+      if (!lib) return notFound(`Library ${rel.libraryId} not open`);
+      const abs = lib.resolver.toAbsolute(rel.relPath);
+      const mountRoot = path.resolve(lib.entry.mountPath);
+      const resolvedAbs = path.resolve(abs);
+      if (resolvedAbs !== mountRoot && !resolvedAbs.startsWith(mountRoot + path.sep)) {
+        log.warn('rejected out-of-library rel path', {
+          libraryId: rel.libraryId,
+          relPath: rel.relPath
+        });
+        return badRequest('Path escapes library root');
+      }
+      if (!existsSync(abs) || !statSync(abs).isFile()) {
+        log.warn('rel file missing on disk for wh3d-file', {
+          libraryId: rel.libraryId,
+          relPath: rel.relPath,
+          abs
+        });
+        return notFound('File missing on disk');
+      }
+      return net.fetch(pathToFileURL(abs).toString());
+    }
+
     const parsed = parse(req.url);
     if (!parsed) {
       log.warn('invalid wh3d-file url', { url: req.url });
@@ -93,7 +147,11 @@ export function registerAssetProtocols(): void {
     if (!file) return notFound('File not in library');
     const abs = lib.resolver.toAbsolute(file.relPath);
     if (!existsSync(abs) || !statSync(abs).isFile()) {
-      log.warn('file missing on disk for wh3d-file', { libraryId: parsed.libraryId, fileId: parsed.fileId, abs });
+      log.warn('file missing on disk for wh3d-file', {
+        libraryId: parsed.libraryId,
+        fileId: parsed.fileId,
+        abs
+      });
       return notFound('File missing on disk');
     }
     return net.fetch(pathToFileURL(abs).toString());
