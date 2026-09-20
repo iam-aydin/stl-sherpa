@@ -578,7 +578,7 @@ function ExternalAppsSection({
 }) {
   const apps = prefs.externalApps;
   const [adding, setAdding] = useState(false);
-  const [extensionsDraft, setExtensionsDraft] = useState('stl,3mf,obj,glb,gltf,ply');
+  const [extensionsDraft, setExtensionsDraft] = useState('stl,fbx,3mf,obj,glb,gltf,ply');
 
   const addApp = async () => {
     setAdding(true);

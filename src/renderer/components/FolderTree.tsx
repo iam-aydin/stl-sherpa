@@ -1,8 +1,23 @@
 import { useMemo, useState } from 'react';
 import type React from 'react';
-import { ActionIcon, Badge, Group, Stack, Text, UnstyledButton } from '@mantine/core';
-import { IconChevronDown, IconChevronRight, IconFolder, IconFolderOpen } from '@tabler/icons-react';
+import { ActionIcon, Badge, Group, Menu, Stack, Text, UnstyledButton } from '@mantine/core';
+import {
+  IconChevronDown,
+  IconChevronRight,
+  IconEdit,
+  IconFolder,
+  IconFolderOpen,
+  IconRefresh
+} from '@tabler/icons-react';
 import type { FolderTreeNode } from '@shared/types';
+
+interface FolderContextMenuState {
+  opened: boolean;
+  x: number;
+  y: number;
+  folderPath: string;
+  folderName: string;
+}
 
 interface Props {
   root: FolderTreeNode | null;
@@ -10,17 +25,32 @@ interface Props {
   onSelect: (path: string) => void;
   /** Called when files are dropped onto a folder row. Optional. */
   onDropFiles?: (toParentDir: string, fileIds: number[]) => void;
+  onRenameFolder?: (path: string) => void;
+  onRevealFolder?: (path: string) => void;
+  onRescanFolder?: (path: string) => void;
 }
 
 /**
- * Lightweight recursive folder tree. Folders that contain no indexed files
- * (immediately or below) never appear because the underlying record set is
- * sparse; every node we render has at least one descendant 3D file.
+ * Lightweight recursive folder tree.
  */
-export function FolderTree({ root, selectedPath, onSelect, onDropFiles }: Props) {
+export function FolderTree({
+  root,
+  selectedPath,
+  onSelect,
+  onDropFiles,
+  onRenameFolder,
+  onRevealFolder,
+  onRescanFolder
+}: Props) {
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set(['']));
+  const [ctxMenu, setCtxMenu] = useState<FolderContextMenuState>({
+    opened: false,
+    x: 0,
+    y: 0,
+    folderPath: '',
+    folderName: ''
+  });
 
-  // Auto-expand the path to the selected folder when selection changes externally.
   const ensureExpanded = useMemo(() => {
     if (!selectedPath) return expanded;
     if (expanded.has(selectedPath)) return expanded;
@@ -43,6 +73,55 @@ export function FolderTree({ root, selectedPath, onSelect, onDropFiles }: Props)
     });
   };
 
+  const handleContextMenu = (e: React.MouseEvent, path: string, name: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setCtxMenu({
+      opened: true,
+      x: e.clientX,
+      y: e.clientY,
+      folderPath: path,
+      folderName: name
+    });
+  };
+
+  const closeCtxMenu = () => setCtxMenu((prev) => ({ ...prev, opened: false }));
+
+  // Fallback handlers using window.api or electron IPC if props were not passed
+  const handleRename = (path: string) => {
+    if (onRenameFolder) {
+      onRenameFolder(path);
+    } else {
+      // Trigger prompt/modal or IPC call
+      const newName = prompt('Rename folder:', ctxMenu.folderName);
+      if (newName && newName !== ctxMenu.folderName) {
+        // Replace with your app's IPC or rename method:
+        // window.api?.renameFolder?.(path, newName);
+      }
+    }
+  };
+
+  const handleReveal = (path: string) => {
+    if (onRevealFolder) {
+      onRevealFolder(path);
+    } else {
+      // Direct electron IPC fallback check
+      if (typeof window !== 'undefined' && 'api' in window) {
+        (window as any).api?.revealInExplorer?.(path);
+      }
+    }
+  };
+
+  const handleRescan = (path: string) => {
+    if (onRescanFolder) {
+      onRescanFolder(path);
+    } else {
+      if (typeof window !== 'undefined' && 'api' in window) {
+        (window as any).api?.rescanFolder?.(path);
+      }
+    }
+  };
+
   if (!root) {
     return (
       <Text c="dimmed" size="sm">
@@ -58,24 +137,96 @@ export function FolderTree({ root, selectedPath, onSelect, onDropFiles }: Props)
           No 3D files found yet.
         </Text>
         <Text size="xs" c="dimmed">
-          Supported: glb, gltf, obj, stl, ply, 3mf
+          Supported: glb, fbx, gltf, obj, stl, ply, 3mf
         </Text>
       </Stack>
     );
   }
 
   return (
-    <Stack gap={2}>
-      <TreeRow
-        node={root}
-        depth={0}
-        expanded={ensureExpanded}
-        toggle={toggle}
-        selectedPath={selectedPath}
-        onSelect={onSelect}
-        onDropFiles={onDropFiles}
-      />
-    </Stack>
+    <>
+      <Stack gap={2}>
+        <TreeRow
+          node={root}
+          depth={0}
+          expanded={ensureExpanded}
+          toggle={toggle}
+          selectedPath={selectedPath}
+          onSelect={onSelect}
+          onDropFiles={onDropFiles}
+          onContextMenu={handleContextMenu}
+        />
+      </Stack>
+
+      <Menu
+        opened={ctxMenu.opened}
+        onChange={(open) => {
+          if (!open) closeCtxMenu();
+        }}
+        position="bottom-start"
+        floatingStrategy="fixed"
+        offset={0}
+        middlewares={{
+          flip: { fallbackPlacements: ['top-start'] },
+          shift: { padding: 8 }
+        }}
+        withinPortal
+        shadow="md"
+        width={200}
+      >
+        <Menu.Target>
+          <div
+            style={{
+              position: 'fixed',
+              top: ctxMenu.y,
+              left: ctxMenu.x,
+              width: 1,
+              height: 1,
+              pointerEvents: 'none'
+            }}
+          />
+        </Menu.Target>
+
+<Menu.Dropdown>
+  <Menu.Label>{ctxMenu.folderName || 'Folder'}</Menu.Label>
+
+  <Menu.Item
+    leftSection={<IconEdit size={14} />}
+    onClick={() => {
+      const path = ctxMenu.folderPath;
+      closeCtxMenu();
+      onRenameFolder?.(path);
+    }}
+  >
+    Rename…
+  </Menu.Item>
+
+  <Menu.Item
+    leftSection={<IconFolderOpen size={14} />}
+    onClick={() => {
+      const path = ctxMenu.folderPath;
+      closeCtxMenu();
+      onRevealFolder?.(path);
+    }}
+  >
+    Show in folder
+  </Menu.Item>
+
+  <Menu.Divider />
+
+  <Menu.Item
+    leftSection={<IconRefresh size={14} />}
+    onClick={() => {
+      const path = ctxMenu.folderPath;
+      closeCtxMenu();
+      onRescanFolder?.(path);
+    }}
+  >
+    Rescan folder
+  </Menu.Item>
+</Menu.Dropdown>
+      </Menu>
+    </>
   );
 }
 
@@ -86,7 +237,8 @@ function TreeRow({
   toggle,
   selectedPath,
   onSelect,
-  onDropFiles
+  onDropFiles,
+  onContextMenu
 }: {
   node: FolderTreeNode;
   depth: number;
@@ -95,6 +247,7 @@ function TreeRow({
   selectedPath: string | null;
   onSelect: (path: string) => void;
   onDropFiles?: (toParentDir: string, fileIds: number[]) => void;
+  onContextMenu: (e: React.MouseEvent, path: string, name: string) => void;
 }) {
   const isExpanded = expanded.has(node.path);
   const isSelected = node.path === selectedPath;
@@ -131,6 +284,7 @@ function TreeRow({
       <Group
         gap={2}
         wrap="nowrap"
+        onContextMenu={(e) => onContextMenu(e, node.path, node.name)}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
@@ -184,6 +338,7 @@ function TreeRow({
             selectedPath={selectedPath}
             onSelect={onSelect}
             onDropFiles={onDropFiles}
+            onContextMenu={onContextMenu}
           />
         ))}
     </>

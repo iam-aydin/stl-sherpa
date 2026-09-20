@@ -579,6 +579,7 @@ export interface IpcApi {
   ): Promise<void>;
   /** Show this file in Finder/Explorer (per-file equivalent of revealLibrary). */
   revealFile(libraryId: string, fileId: number): Promise<void>;
+  startFileDrag(libraryId: string, fileId: number): void;
 
   /**
    * Subscribe to per-library file events (scan progress + watcher updates).

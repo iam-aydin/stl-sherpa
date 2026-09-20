@@ -1,4 +1,5 @@
-import { BrowserWindow, dialog, ipcMain, shell } from 'electron';
+import { BrowserWindow, dialog, ipcMain, nativeImage, shell } from 'electron';
+import { app } from 'electron';
 import { spawn } from 'node:child_process';
 import { basename, extname, join } from 'node:path';
 import { existsSync } from 'node:fs';
@@ -7,11 +8,13 @@ import { IPC } from '@shared/ipc-channels';
 import type { ExternalAppRegistration, PreferencesFile } from '@shared/preferences';
 import * as store from '@main/preferences/store';
 import { getOpenLibrary } from '@main/libraries/manager';
+import { thumbAbsPath } from '@main/thumb-pool/storage';
 import { rebuildThumbnailCache, purgeOrphanThumbs, cacheRebuilds } from '@main/cache/management';
 import { DEFAULT_LOG_LEVEL, openLogsFolder, setLogLevel, scopedLogger } from '@main/logger';
 import { runUndo } from '@main/undo/runner';
 import { broadcastLibraryEvent } from '@main/events';
 import type { CacheProgress } from '@shared/types';
+
 
 const log = scopedLogger('shell');
 
@@ -193,5 +196,46 @@ export function registerPreferencesIpc(): void {
     const absPath = lib.resolver.toAbsolute(file.relPath);
     if (!existsSync(absPath)) return;
     shell.showItemInFolder(absPath);
+  });
+
+    // Native OS file drag — lets the user drag a tile out of the window and
+  // drop it onto an external app (Unreal, Unity, Godot, Explorer, ...).
+  // Uses ipcMain.on (fire-and-forget), NOT .handle/invoke: startDrag() must
+  // begin synchronously while the OS drag gesture from the renderer's
+  // dragstart is still live. A Promise round trip risks missing that window.
+  ipcMain.on(IPC.startFileDrag, (e, libraryId: string, fileId: number) => {
+    try {
+      const lib = getOpenLibrary(libraryId);
+      if (!lib) {
+        log.warn('startFileDrag: library not open', { libraryId });
+        return;
+      }
+      const file = lib.files.getById(fileId);
+      if (!file) {
+        log.warn('startFileDrag: file not found', { libraryId, fileId });
+        return;
+      }
+      const absPath = lib.resolver.toAbsolute(file.relPath);
+      if (!existsSync(absPath)) {
+        log.warn('startFileDrag: file missing on disk', { absPath });
+        return;
+      }
+
+      const thumbPath = thumbAbsPath(lib.entry.mountPath, fileId);
+      let icon = existsSync(thumbPath)
+        ? nativeImage.createFromPath(thumbPath)
+        : nativeImage.createEmpty();
+      if (icon.isEmpty()) {
+        icon = nativeImage.createFromPath(join(app.getAppPath(), 'build', 'icon.png'));
+      }
+      if (icon.isEmpty()) {
+        icon = nativeImage.createFromBuffer(Buffer.alloc(16 * 16 * 4), { width: 16, height: 16 });
+      }
+
+      e.sender.startDrag({ file: absPath, icon });
+      log.info('startFileDrag: drag started', { absPath });
+    } catch (err) {
+      log.error('startFileDrag: threw', { err: (err as Error).message });
+    }
   });
 }

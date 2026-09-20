@@ -31,7 +31,8 @@ const DEFAULTS_BY_EXT: Record<string, FileOrientation> = {
   obj: { upAxis: '+Y' },
   ply: { upAxis: '+Y' },
   glb: { upAxis: '+Y' },
-  gltf: { upAxis: '+Y' }
+  gltf: { upAxis: '+Y' },
+  fbx: { upAxis: '+Y' }
 };
 
 export function getDefaultOrientation(ext: string): FileOrientation {

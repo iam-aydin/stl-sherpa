@@ -196,7 +196,7 @@ function LibraryRow({
             onClick={onReveal}
             disabled={!library.online}
           >
-            Reveal in Finder
+            Show in Folder
           </Menu.Item>
           <Menu.Item
             leftSection={<IconRefresh size={14} />}

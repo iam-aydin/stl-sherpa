@@ -76,7 +76,7 @@ export function startWatcher(
     },
     depth: 99,
     // fsevents/inotify don't fire on network mounts. Fall back to polling so
-    // external Finder changes still propagate; accept the staleness window.
+    // external Folder changes still propagate; accept the staleness window.
     usePolling: isNetwork,
     interval: isNetwork ? pollMs : undefined,
     binaryInterval: isNetwork ? pollMs * NAS_BINARY_POLL_MULTIPLIER : undefined

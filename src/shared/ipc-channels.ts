@@ -42,6 +42,7 @@ export const IPC = {
   setDefaultExternalApp: 'prefs:setDefaultExternalApp',
   openWithExternalApp: 'files:openWithExternalApp',
   revealFile: 'files:reveal',
+  startFileDrag: 'files:startDrag',
   batchRename: 'files:batchRename',
   setFileNotes: 'files:setNotes',
   rebuildThumbCache: 'cache:rebuild',

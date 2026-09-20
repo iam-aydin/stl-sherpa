@@ -22,7 +22,7 @@ export function DeleteConfirmModal({ opened, files, onCancel, onConfirm }: Props
       <Stack gap="md">
         <Text size="sm">
           Move {files.length} file{files.length === 1 ? '' : 's'} to the system Trash? You can
-          restore from Finder if you change your mind.
+          restore from Folder if you change your mind.
         </Text>
         <ScrollArea h={Math.min(200, visible.length * 22 + 12)}>
           <List size="xs" spacing={2}>

@@ -6,7 +6,9 @@ import type { ExtractedMetadata, FileRecord, MeshValidation } from '@shared/type
 import type { PrintBed } from '@shared/preferences';
 import { COLOR_LABEL_HEX } from '@shared/ratings';
 import { modelFitsAnyBed } from '@shared/print-bed';
+
 import { formatBytes } from '../util/format';
+import { ipc } from '../ipc-client';
 
 export interface TileClickModifiers {
   shift: boolean;
@@ -279,14 +281,10 @@ export function ThumbGrid({
                           }
                           onTileContextMenu(file.id, e.clientX, e.clientY);
                         }}
-                        onDragStart={(e) => {
-                          const ids = selectedIds.has(file.id) ? [...selectedIds] : [file.id];
-                          e.dataTransfer.setData(
-                            'application/x-wh3d-file-ids',
-                            JSON.stringify(ids)
-                          );
-                          e.dataTransfer.effectAllowed = 'move';
-                        }}
+                          onDragStart={(e) => {
+                            e.preventDefault();
+                            ipc.startFileDrag(file.libraryId, file.id);
+                          }}
                       />
                     );
                   })}

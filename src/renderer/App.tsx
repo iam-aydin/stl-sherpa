@@ -70,6 +70,7 @@ import { DeleteConfirmModal } from './components/DeleteConfirmModal';
 import { MoveConfirmModal } from './components/MoveConfirmModal';
 import { CompareModal } from './components/CompareModal';
 import { ipc } from './ipc-client';
+import { SUPPORTED_EXTENSIONS } from '@shared/formats';
 
 const SEARCH_DEBOUNCE_MS = 200;
 const LIGHTING_STORAGE_KEY = 'wh3d:lightingStyle';
@@ -164,6 +165,20 @@ function readStoredLightingStyle(): LightingStyle {
   }
 }
 
+const EXT_FILTER_STORAGE_KEY = 'wh3d:selectedExtensions';
+
+function readStoredExtensions(): Set<SupportedExtension> {
+  try {
+    const raw = localStorage.getItem(EXT_FILTER_STORAGE_KEY);
+    if (!raw) return new Set();
+    const parsed = JSON.parse(raw) as string[];
+    const valid = new Set(SUPPORTED_EXTENSIONS as readonly string[]);
+    return new Set(parsed.filter((e) => valid.has(e)) as SupportedExtension[]);
+  } catch {
+    return new Set();
+  }
+}
+
 export function App() {
   const [libraries, setLibraries] = useState<LibrarySummary[]>([]);
   const [selectedLibraryId, setSelectedLibraryId] = useState<string | null>(null);
@@ -211,8 +226,19 @@ export function App() {
   const [searchInput, setSearchInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedExtensions, setSelectedExtensions] = useState<Set<SupportedExtension>>(
-    () => new Set()
+    () => readStoredExtensions()
   );
+  useEffect(() => {
+  try {
+    localStorage.setItem(
+      EXT_FILTER_STORAGE_KEY,
+      JSON.stringify([...selectedExtensions])
+    );
+  } catch {
+    // best-effort; ignore
+  }
+}, [selectedExtensions]);
+
   const [selectedTagIds, setSelectedTagIds] = useState<Set<number>>(() => new Set());
   const [minRating, setMinRating] = useState<number>(0);
   const [selectedColorLabels, setSelectedColorLabels] = useState<Set<ColorLabel>>(
@@ -501,6 +527,7 @@ export function App() {
   }, []);
 
   // Library changed → reset everything per-library.
+  const prevLibraryIdRef = useRef<string | null>(null);
   useEffect(() => {
     setFolderTree(null);
     setFiles([]);
@@ -512,7 +539,13 @@ export function App() {
     setThumbVersions(new Map());
     setSearchInput('');
     setSearchQuery('');
-    setSelectedExtensions(new Set());
+    if (prevLibraryIdRef.current !== null) {
+    // Only clear the extension filter on a genuine switch between two
+    // already-loaded libraries — skip it on the initial null→id
+    // assignment at startup, so the persisted filter survives a restart.
+      setSelectedExtensions(new Set());
+  }
+  prevLibraryIdRef.current = selectedLibraryId;
     setSelectedTagIds(new Set());
     setMinRating(0);
     setSelectedColorLabels(new Set());
@@ -1433,15 +1466,28 @@ export function App() {
             <ScrollArea h="100%" type="auto">
               <div style={{ padding: 8 }}>
                 <FolderTree
-                  root={folderTree}
-                  selectedPath={
-                    viewScope !== 'normal' || selectedCollectionId != null
-                      ? null
-                      : selectedFolderPath
-                  }
-                  onSelect={selectFolder}
-                  onDropFiles={requestMove}
-                />
+  root={folderTree}
+  selectedPath={
+    viewScope !== 'normal' || selectedCollectionId != null
+      ? null
+      : selectedFolderPath
+  }
+  onSelect={selectFolder}
+  onDropFiles={requestMove}
+  /* --- ADD THESE 3 LINES --- */
+  onRevealFolder={(folderPath) => {
+    // Calls Electron IPC to open folder in File Explorer / Finder
+    window.api?.revealInExplorer?.(folderPath);
+  }}
+  onRescanFolder={(folderPath) => {
+    // Calls your IPC scan function for this subfolder
+    window.api?.rescanFolder?.(folderPath);
+  }}
+  onRenameFolder={(folderPath) => {
+    // Call your app's folder rename handler or IPC function
+    window.api?.renameFolder?.(folderPath);
+  }}
+/>
               </div>
             </ScrollArea>
           </div>
@@ -1853,6 +1899,7 @@ export function App() {
   );
 }
 
+  
 function ShowAllInLibraryLink({
   libraryName,
   active,

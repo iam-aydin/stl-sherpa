@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
 import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
+import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
 import { PLYLoader } from 'three/examples/jsm/loaders/PLYLoader.js';
 import { ThreeMFLoader } from 'three/examples/jsm/loaders/3MFLoader.js';
 import { getDefaultOrientation, type FileOrientation } from '@shared/orientation';
@@ -56,6 +57,9 @@ export async function loadModel(
     case 'gltf':
       obj = await loadGLTF(buffer, resourceContext);
       break;
+    case 'fbx':
+      obj = loadFBX(buffer, resourceContext);
+      break;
     case 'obj':
       obj = loadOBJ(buffer);
       break;
@@ -108,6 +112,29 @@ function loadOBJ(buffer: ArrayBuffer): THREE.Object3D {
   const text = new TextDecoder().decode(buffer);
   const loader = new OBJLoader();
   const obj = loader.parse(text);
+  applyDefaultMaterial(obj);
+  return obj;
+}
+
+function loadFBX(buffer: ArrayBuffer, resourceContext: ResourceContext): THREE.Group {
+  // FBXLoader.parse is synchronous (unlike GLTFLoader) and returns the group
+  // directly. It resolves referenced textures through its internal
+  // TextureLoader, which is bound to whatever LoadingManager we give it —
+  // same resourceContext contract as loadGLTF, so the wh3d-file://rel/ sidecar
+  // route (renderer) and the plain OS path (thumb-worker) both work unchanged.
+  let manager = THREE.DefaultLoadingManager;
+  let path = '';
+  if (typeof resourceContext === 'function') {
+    manager = new THREE.LoadingManager();
+    manager.setURLModifier((url) => {
+      if (/^(data:|blob:|https?:|wh3d-)/i.test(url)) return url;
+      return resourceContext(url);
+    });
+  } else {
+    path = resourceContext;
+  }
+  const loader = new FBXLoader(manager);
+  const obj = loader.parse(buffer, path);
   applyDefaultMaterial(obj);
   return obj;
 }

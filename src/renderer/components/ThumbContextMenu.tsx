@@ -3,6 +3,8 @@ import {
   Autocomplete,
   Button,
   Group,
+  Paper,
+  ScrollArea,
   Menu,
   Modal,
   Stack,
@@ -42,6 +44,18 @@ import { UP_AXIS_OPTIONS, type FileOrientation, type UpAxis } from '@shared/orie
 import { COLOR_LABELS, COLOR_LABEL_HEX } from '@shared/ratings';
 import type { ExternalAppRegistration } from '@shared/preferences';
 import { ipc } from '../ipc-client';
+
+interface ThumbContextMenuProps {
+  open: boolean;
+  x: number;
+  y: number;
+  selectedCount: number;
+  onClose: () => void;
+  onDelete: () => void;
+  onDuplicate: () => void;
+  onBatchRename: () => void;
+  onCompare: () => void;
+}
 
 interface Props {
   opened: boolean;
@@ -183,32 +197,40 @@ export function ThumbContextMenu(props: Props) {
     onClose();
   };
 
-  return (
-    <>
-      <Menu
-        opened={opened}
-        onChange={(open) => {
-          if (!open) onClose();
-        }}
-        position="bottom-start"
-        withinPortal
-        shadow="md"
-        width={240}
-        closeOnItemClick={false}
-      >
-        <Menu.Target>
-          <div
-            style={{
-              position: 'fixed',
-              top: y,
-              left: x,
-              width: 1,
-              height: 1,
-              pointerEvents: 'none'
-            }}
-          />
-        </Menu.Target>
-        <Menu.Dropdown>
+return (
+  <>
+    <Menu
+  opened={opened}
+  onChange={(open) => {
+    if (!open) onClose();
+  }}
+  position="right-start"
+  floatingStrategy="fixed"
+  // Negative offset or transform shifts the menu top edge upwards relative to (x, y)
+  offset={0}
+  middlewares={{
+    flip: false,
+    shift: { padding: 8 }
+  }}
+  withinPortal
+  shadow="md"
+  width={240}
+  closeOnItemClick={false}
+>
+      <Menu.Target>
+    <div
+      style={{
+        position: 'fixed',
+        top: Math.max(0, y - 250), // Pulls the target point 250px higher
+        left: x,
+        width: 1,
+        height: 1,
+        pointerEvents: 'none'
+      }}
+    />
+</Menu.Target>
+      <Menu.Dropdown p={0}>
+        <ScrollArea.Autosize mah="calc(100vh - 20px)" type="auto" p={4}>
           <Menu.Label>
             {selectedFiles.length} file{selectedFiles.length === 1 ? '' : 's'} selected
           </Menu.Label>
@@ -234,9 +256,6 @@ export function ThumbContextMenu(props: Props) {
                     </Menu.Item>
                   );
                 }
-                // App has profiles — render each as its own item plus a
-                // "(no profile)" fallback. Mantine Menus don't nest natively;
-                // a flat sub-list is fine since we already have section headers.
                 return (
                   <div key={app.id}>
                     <Menu.Label>Open in {app.name}</Menu.Label>
@@ -271,7 +290,7 @@ export function ThumbContextMenu(props: Props) {
                 leftSection={<IconFolderOpen size={14} />}
                 onClick={reveal}
               >
-                Reveal in Finder
+                Show in Folder
               </Menu.Item>
               <Menu.Divider />
             </>
@@ -482,41 +501,43 @@ export function ThumbContextMenu(props: Props) {
               </Menu.Item>
             </>
           )}
-        </Menu.Dropdown>
-      </Menu>
+        </ScrollArea.Autosize>
+      </Menu.Dropdown>
+    </Menu>
 
-      <AddTagModal
-        opened={modal.kind === 'add-tag'}
-        allTags={allTags}
-        fileCount={selectedFiles.length}
-        onCancel={close}
-        onConfirm={async (name) => {
-          await onBulkAddTag(name);
-          close();
-        }}
-      />
+    {/* Modals remain unchanged below */}
+    <AddTagModal
+      opened={modal.kind === 'add-tag'}
+      allTags={allTags}
+      fileCount={selectedFiles.length}
+      onCancel={close}
+      onConfirm={async (name) => {
+        await onBulkAddTag(name);
+        close();
+      }}
+    />
 
-      <RemoveTagModal
-        opened={modal.kind === 'remove-tag'}
-        appliedTags={appliedTags}
-        onCancel={close}
-        onConfirm={async (tagId) => {
-          await onBulkRemoveTag(tagId);
-          close();
-        }}
-      />
+    <RemoveTagModal
+      opened={modal.kind === 'remove-tag'}
+      appliedTags={appliedTags}
+      onCancel={close}
+      onConfirm={async (tagId) => {
+        await onBulkRemoveTag(tagId);
+        close();
+      }}
+    />
 
-      <NewCollectionModal
-        opened={modal.kind === 'new-collection'}
-        onCancel={close}
-        onConfirm={async (name) => {
-          const created = await onCreateCollection(name);
-          if (created) await onAddToCollection(created.id, fileIds);
-          close();
-        }}
-      />
-    </>
-  );
+    <NewCollectionModal
+      opened={modal.kind === 'new-collection'}
+      onCancel={close}
+      onConfirm={async (name) => {
+        const created = await onCreateCollection(name);
+        if (created) await onAddToCollection(created.id, fileIds);
+        close();
+      }}
+    />
+  </>
+);
 }
 
 function AddTagModal({

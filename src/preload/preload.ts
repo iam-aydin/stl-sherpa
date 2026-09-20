@@ -152,7 +152,10 @@ const api: IpcApi = {
     ) as Promise<void>,
   revealFile: (libraryId: string, fileId: number) =>
     ipcRenderer.invoke(IPC.revealFile, libraryId, fileId) as Promise<void>,
-  batchRename: (libraryId: string, plan: BatchRenameItem[]) =>
+  startFileDrag: (libraryId: string, fileId: number) =>
+    ipcRenderer.send(IPC.startFileDrag, libraryId, fileId),
+
+batchRename: (libraryId: string, plan: BatchRenameItem[]) =>
     ipcRenderer.invoke(IPC.batchRename, libraryId, plan) as Promise<BatchRenameResult>,
   setFileNotes: (libraryId: string, fileId: number, notes: string) =>
     ipcRenderer.invoke(IPC.setFileNotes, libraryId, fileId, notes) as Promise<void>,

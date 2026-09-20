@@ -168,6 +168,12 @@ function CollectionRow({
   const [menuOpen, setMenuOpen] = useState(false);
   const isSmart = collection.smartQuery != null;
 
+  const handleAction = (e: React.MouseEvent, action: () => void) => {
+    e.stopPropagation();
+    setMenuOpen(false);
+    action();
+  };
+
   return (
     <Group
       gap={4}
@@ -207,6 +213,7 @@ function CollectionRow({
           )}
         </Group>
       </UnstyledButton>
+
       <Menu
         opened={menuOpen}
         onChange={setMenuOpen}
@@ -221,29 +228,53 @@ function CollectionRow({
             color="gray"
             size="xs"
             aria-label={`Actions for ${collection.name}`}
-            onClick={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              setMenuOpen((prev) => !prev);
+            }}
           >
             <IconDotsVertical size={12} />
           </ActionIcon>
         </Menu.Target>
+
         <Menu.Dropdown>
           {isSmart && (
-            <Menu.Item leftSection={<IconBolt size={14} />} onClick={onEditSmart}>
+            <Menu.Item
+              leftSection={<IconBolt size={14} />}
+              onClick={(e) => handleAction(e, onEditSmart)}
+            >
               Edit query…
             </Menu.Item>
           )}
-          <Menu.Item leftSection={<IconPencil size={14} />} onClick={onRename}>
+
+          <Menu.Item
+            leftSection={<IconPencil size={14} />}
+            onClick={(e) => handleAction(e, onRename)}
+          >
             Rename…
           </Menu.Item>
+
           {!isSmart && (
-            <Menu.Item leftSection={<IconPackageExport size={14} />} onClick={onExportZip}>
+            <Menu.Item
+              leftSection={<IconPackageExport size={14} />}
+              onClick={(e) => handleAction(e, onExportZip)}
+            >
               Export as ZIP…
             </Menu.Item>
           )}
-          <Menu.Item leftSection={<IconFileExport size={14} />} onClick={onExportContactSheet}>
+
+          <Menu.Item
+            leftSection={<IconFileExport size={14} />}
+            onClick={(e) => handleAction(e, onExportContactSheet)}
+          >
             Contact sheet (PDF)…
           </Menu.Item>
-          <Menu.Item leftSection={<IconTrash size={14} />} color="red" onClick={onDelete}>
+
+          <Menu.Item
+            leftSection={<IconTrash size={14} />}
+            color="red"
+            onClick={(e) => handleAction(e, onDelete)}
+          >
             Delete…
           </Menu.Item>
         </Menu.Dropdown>
@@ -269,7 +300,6 @@ function NameModal({
 }) {
   const [value, setValue] = useState(initial);
 
-  // Reset the draft to `initial` each time the modal opens.
   useEffect(() => {
     if (opened) setValue(initial);
   }, [opened, initial]);
